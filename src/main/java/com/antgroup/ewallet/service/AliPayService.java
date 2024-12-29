@@ -1,10 +1,7 @@
 package com.antgroup.ewallet.service;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.slf4j.Logger;
@@ -146,6 +143,50 @@ public class AliPayService {
         } catch (Exception e) {
             logger.error("Error during Notify Payment API call", e);
             throw new RuntimeException(e);
+        }
+    }
+
+    public PaymentCodeResponse getPaymentCode(String url, PaymentCodeRequest request, String requestTime, String signature) {
+        try {
+            logger.info("Making payment code request to URL: {}", url);
+            logger.debug("Request payload: {}", request);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Client-Id", clientId);
+            headers.set("Request-Time", requestTime);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Signature", "algorithm=RSA256,keyVersion=1,signature=" + signature);
+            headers.set("markuid", "0A");
+
+            logger.debug("Request headers: {}", headers);
+
+            HttpEntity<PaymentCodeRequest> requestEntity = new HttpEntity<>(request, headers);
+
+            ResponseEntity<PaymentCodeResponse> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    requestEntity,
+                    PaymentCodeResponse.class
+            );
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                logger.error("Payment code API returned error status: {}", response.getStatusCode());
+                throw new RuntimeException("Failed to generate payment code: " + response.getStatusCode());
+            }
+
+            PaymentCodeResponse paymentCodeResponse = response.getBody();
+            if (paymentCodeResponse == null) {
+                logger.error("Received null response from payment code API");
+                throw new RuntimeException("Null response from payment code API");
+            }
+
+            logger.info("Successfully received payment code response");
+            logger.debug("Response body: {}", paymentCodeResponse);
+
+            return paymentCodeResponse;
+        } catch (Exception e) {
+            logger.error("Error calling Get Payment Code API", e);
+            throw new RuntimeException("Failed to call Get Payment Code API: " + e.getMessage(), e);
         }
     }
 }

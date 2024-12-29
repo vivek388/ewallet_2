@@ -320,3 +320,35 @@ body {
     margin-top: 20px;
     text-align: center; /* Center the error message */
 }
+
+.qr-generation-form {
+    margin: 20px auto;
+    max-width: 500px;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.qr-display {
+    text-align: center;
+    margin: 20px auto;
+    padding: 20px;
+}
+
+.qr-display img {
+    max-width: 300px;
+    height: auto;
+    margin: 20px 0;
+}
+
+.qr-amount {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+.qr-expiry {
+    color: #666;
+    margin: 10px 0;
+}

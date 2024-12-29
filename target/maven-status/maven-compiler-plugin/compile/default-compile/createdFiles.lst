@@ -15,8 +15,10 @@ com/antgroup/ewallet/model/response/CodeResponse.class
 com/antgroup/ewallet/model/entity/PaymentFactor.class
 com/antgroup/ewallet/model/entity/Store.class
 com/antgroup/ewallet/service/AliPayService.class
+com/antgroup/ewallet/config/WebConfig.class
 com/antgroup/ewallet/model/entity/User.class
 com/antgroup/ewallet/AppConfig.class
+com/antgroup/ewallet/model/response/PaymentCodeResponse.class
 com/antgroup/ewallet/model/entity/OrderAmount.class
 com/antgroup/ewallet/model/response/IdentifyCodeResponse.class
 com/antgroup/ewallet/model/request/UserInitiatedPayRequest.class
@@ -24,10 +26,12 @@ com/antgroup/ewallet/model/request/InquiryPaymentRequest.class
 com/antgroup/ewallet/model/entity/PaymentPromoInfo.class
 com/antgroup/ewallet/controller/ViewController.class
 com/antgroup/ewallet/controller/AliPayController.class
+com/antgroup/ewallet/controller/QRCodeController.class
 com/antgroup/ewallet/model/entity/Transaction.class
 com/antgroup/ewallet/model/entity/MerchantAddress.class
 com/antgroup/ewallet/controller/GlobalExceptionHandler.class
 com/antgroup/ewallet/model/entity/Order.class
+com/antgroup/ewallet/model/request/PaymentCodeRequest.class
 com/antgroup/ewallet/model/request/IdentifyCodeRequest.class
 com/antgroup/ewallet/service/CodeIdentifyService.class
 com/antgroup/ewallet/controller/UserController.class
@@ -38,5 +42,7 @@ com/antgroup/ewallet/model/entity/ApiResult.class
 com/antgroup/ewallet/model/response/RefundResponse.class
 com/antgroup/ewallet/model/entity/SurchargeInfo.class
 com/antgroup/ewallet/service/ExcelService$1.class
+com/antgroup/ewallet/model/entity/PaymentCodeInfo.class
+com/antgroup/ewallet/model/entity/PaymentCodeEnv.class
 com/antgroup/ewallet/model/request/QrCodeRequest.class
 com/antgroup/ewallet/model/entity/PaymentPromoDetail.class

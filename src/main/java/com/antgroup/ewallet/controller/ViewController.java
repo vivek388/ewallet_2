@@ -165,4 +165,9 @@ public class ViewController {
         logger.debug("Cookie {} not found.", cookieName);
         return null;
     }
+    @GetMapping("showQr")
+    public String showQrPage() {
+        return "showQr"; // Return the name of your QR code view
+    }
+
 }

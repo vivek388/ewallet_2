@@ -32,11 +32,12 @@
                 </li>
             </ul>
         </div>
-
+        <div id="qrCodeContainer" style="margin: 20px; min-height: 400px;"></div>
         <div class="wallet-actions">
             <button class="action-button" id="reloadButton">Reload</button>
             <button class="action-button" onclick="startQrScanner()">Scan QR</button>
-            <button class="action-button">Show QR</button>
+            <button class="action-button" onclick="generateQRCode()">Generate QR Code</button>
+
         </div>
 
         <form action="#" th:action="@{/users/logout}" method="post">
@@ -149,7 +150,86 @@
 
     <script>
         let html5QrCode;
+            function getCookieValue(cookieName) {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === cookieName) {
+                        return value;
+                    }
+                }
+                return null;
+            }
 
+<!--        function generateQRCode() {-->
+<!--            const request = {-->
+<!--                region: "PH",-->
+<!--                customerId: "21281****",-->
+<!--                codeQuantity: "3",-->
+<!--                env: {-->
+<!--                    deviceTokenId: "21212****"-->
+<!--                }-->
+<!--            };-->
+
+<!--            fetch('/getPaymentCode', {-->
+<!--                method: 'POST',-->
+<!--                headers: {-->
+<!--                    'Content-Type': 'application/json',-->
+<!--                    'request-time': new Date().toISOString()-->
+<!--                },-->
+<!--                body: JSON.stringify(request)-->
+<!--            })-->
+<!--            .then(response => response.json())-->
+<!--            .then(data => {-->
+<!--                if (data.result.resultStatus === 'S') {-->
+<!--                    window.location.href = "/showQr";-->
+<!--                } else {-->
+<!--                    alert('Failed to generate QR code');-->
+<!--                }-->
+<!--            })-->
+<!--            .catch(error => {-->
+<!--                console.error('Error:', error);-->
+<!--                alert('Error generating QR code');-->
+<!--            });-->
+<!--        }-->
+
+        function generateQRCode() {
+            const qrContainer = document.getElementById('qrCodeContainer');
+            if (!qrContainer) {
+                console.error('QR code container not found');
+                return;
+            }
+
+            qrContainer.innerHTML = '<div style="text-align:center;"><p>Generating QR Code...</p></div>';
+
+            fetch('/wallet/generateQrCode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(text || 'Failed to generate QR code');
+                    });
+                }
+                return response.text();
+            })
+            .then(htmlContent => {
+                qrContainer.innerHTML = htmlContent;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                qrContainer.innerHTML = `<div style="text-align:center; color:red;">
+                    <p>Error generating QR code: ${error.message}</p>
+                    <button onclick="window.location.reload()"
+                            style="padding: 10px 20px; margin-top: 10px; cursor: pointer;">
+                        Try Again
+                    </button>
+                </div>`;
+            });
+        }
         function startQrScanner() {
             // Check for camera permissions
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
@@ -223,6 +303,37 @@
 
         function initiatePayment(qrCodeMessage) {
             fetch('/initiatePay', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ code: qrCodeMessage }) // Add necessary data if needed
+            })
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    } else {
+                        throw new Error('Network response was not ok');
+                    }
+                })
+                .then(data => {
+                    console.log('Payment initiated:', data);
+                    if (data.result.resultStatus === "S") {
+                        console.log('Payment initiated successfully!');
+                        showConfirmationModal(data);
+                    } else {
+                        alert('Payment initiated failed!');
+                    }
+
+                })
+                .catch(error => {
+                    console.error('Error initiating payment:', error);
+                    alert('Error initiating payment: ' + error.message);
+                });
+        }
+
+        function showQrScanner() {
+            fetch('/getPaymentCode', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

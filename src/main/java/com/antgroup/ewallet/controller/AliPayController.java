@@ -35,6 +35,8 @@ public class AliPayController {
     private static String notifyPaymentUrl = "https://open-sea-global.alipayplus.com/aps/api/v1/payments/notifyPayment";
     private static String notifyPaymentUri = "/aps/api/v1/payments/notifyPayment";
     private static String orderIsClosed = "ORDER_IS_CLOSED";
+    private static String getPaymentCodeUrl = "https://open-sea.alipayplus.com/aps/api/v1/codes/getPaymentCode";
+    private static String getPaymentCodeUri = "/aps/api/v1/codes/getPaymentCode";
 
     private AliPayService aliPayService;
     private ExcelService excelService;
@@ -310,4 +312,56 @@ public class AliPayController {
                 .header("Client-Id", clientId)
                 .body(apiResult);
     }
+    @PostMapping("/getPaymentCode")
+    public ResponseEntity<PaymentCodeResponse> getPaymentCodes(@RequestBody PaymentCodeRequest request,
+                                                               @RequestHeader(value = "request-time", required = true) String requestTime,
+                                                               @RequestHeader(value = "signature", required = true) String headerSignature,
+                                                               HttpServletRequest httpServletRequest) throws JsonProcessingException {
+        // Extract the signature from the header
+        String extractedSignature = Arrays.stream(headerSignature.split(","))
+                .filter(part -> part.startsWith("signature="))
+                .map(part -> part.split("=")[1])
+                .findFirst()
+                .orElse(null);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        String requestJson = objectMapper.writeValueAsString(request);
+
+        // Verify the signature
+        boolean verified = aliPayService.verify(getPaymentCodeUri, requestTime, requestJson, extractedSignature);
+        if (!verified) {
+            BaseResult baseResult = new BaseResult("INVALID_SIGNATURE", "The signature is invalid.", "F");
+            PaymentCodeResponse response = new PaymentCodeResponse(baseResult, null);
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        // Call the service to generate payment codes
+        PaymentCodeResponse response = aliPayService.getPaymentCode(getPaymentCodeUrl, request, requestTime, extractedSignature);
+
+        // Generate response headers
+        LocalDateTime now = LocalDateTime.now();
+        String formattedDateTime = now.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneId.of("UTC"))
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'"));
+
+        String resultJson = objectMapper.writeValueAsString(response);
+        String responseSignature = aliPayService.getSignature(getPaymentCodeUri, formattedDateTime, resultJson);
+
+        return ResponseEntity.ok()
+                .header("Signature", "algorithm=RSA256,keyVersion=1,signature=" + responseSignature)
+                .header("Response-Time", formattedDateTime)
+                .header("Client-Id", clientId)
+                .body(response);
+    }
+
+//        @PostMapping("/getPaymentCode")
+//        public ResponseEntity<PaymentCodeResponse> getPaymentCode(@RequestBody PaymentCodeRequest request) {
+//            // Mock or real implementation
+//            PaymentCodeEnv env = request.getEnv();
+//            PaymentCodeInfo paymentCodeInfo = new PaymentCodeInfo("testPaymentCode123", "2024-12-31T00:00:00", "2025-01-01T00:00:00");
+//            BaseResult baseResult = new BaseResult("S", "Success", "T");
+//
+//            return ResponseEntity.ok(new PaymentCodeResponse(baseResult, List.of(paymentCodeInfo)));
+//        }
+
 }

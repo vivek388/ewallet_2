@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <title>QR Code</title>
+</head>
+<body>
+<h1>Scan this QR Code:</h1>
+<div th:each="paymentCodeInfo : ${paymentCodeInfoList}">
+    <img th:src="${paymentCodeInfo.paymentCode}" alt="QR Code"/>
+    <p>Code Validity Start Time: <span th:text="${paymentCodeInfo.codeValidityStartTime}"></span></p>
+    <p>Code Expiry Time: <span th:text="${paymentCodeInfo.codeExpiryTime}"></span></p>
+</div>
+<p>Result Code: <span th:text="${resultCode}"></span></p>
+<p>Result Message: <span th:text="${resultMessage}"></span></p>
+</body>
+</html>
