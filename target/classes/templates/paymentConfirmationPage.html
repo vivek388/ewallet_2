@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:th="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,36 +14,38 @@
         <p th:class="${titleClass}" th:text="${title}"></p>
     </div>
 
+    <!-- In paymentConfirmationPage.html -->
     <div class="confirmation-details">
         <h3>Transaction Details</h3>
         <ul>
             <li>
                 <span>Transaction ID:</span>
-                <span th:text="'#' + ${transactionId}"></span>
+                <span th:text="${transactionId}"></span>
             </li>
             <li>
                 <span>Amount:</span>
-                <span th:class="${amount < 0 ? 'transaction-amount negative' : 'transaction-amount positive'}" th:if="${amount}" th:text="'$' + ${amount}">$0.00</span>
+                <span th:class="${amount < 0 ? 'transaction-amount negative' : 'transaction-amount positive'}"
+                      th:text="${payTo}">$0.00</span>
             </li>
             <li>
-                <span>Date:</span>
-                <span class="transaction-date" th:text="${date}"></span>
-            </li>
-            <li th:if="${payment}">
-                <span>Payment:</span>
-                <span class="transaction-date" th:text="${payment}"></span>
-            </li>
-            <li th:if="${payTo}">
-                <span>Pay To:</span>
-                <span class="transaction-date" th:text="${payTo}"></span>
-            </li>
-            <li th:if="${currency}">
-                <span>Currency:</span>
-                <span class="transaction-date" th:text="${currency}"></span>
+                <span>Merchant:</span>
+                <span th:text="${merchant}"></span>
             </li>
             <li>
                 <span>Status:</span>
-                <span class="transaction-amount" th:class="'transaction-amount ' + (${status == 'SUCCESS'} ? 'positive' : 'negative')" th:text="${status}"></span>
+                <span class="transaction-status" th:text="${status}"></span>
+            </li>
+            <li th:if="${currency}">
+                <span>Exchange Rate:</span>
+                <span th:text="${currency}"></span>
+            </li>
+            <!-- Add promo section if exists -->
+            <li th:if="${promoDetails}" class="promo-section">
+                <span>Promotions Applied:</span>
+                <div th:each="promo : ${promoDetails}" class="promo-item">
+                    <span th:text="${promo.name}"></span>
+                    <span th:text="${promo.amount}"></span>
+                </div>
             </li>
         </ul>
     </div>

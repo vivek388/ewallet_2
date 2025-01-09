@@ -1,7 +1,9 @@
 com/antgroup/ewallet/service/ExcelService.class
 com/antgroup/ewallet/model/entity/ActionForm.class
+com/antgroup/ewallet/model/entity/PaymentMethod.class
 com/antgroup/ewallet/model/entity/BasePayment.class
 com/antgroup/ewallet/model/request/RefundRequest.class
+com/antgroup/ewallet/model/response/PaymentResponse.class
 com/antgroup/ewallet/model/response/UserInitiatedPayResponse.class
 com/antgroup/ewallet/service/ExcelService$2.class
 com/antgroup/ewallet/model/entity/PaymentQuote.class
@@ -29,6 +31,7 @@ com/antgroup/ewallet/controller/AliPayController.class
 com/antgroup/ewallet/controller/QRCodeController.class
 com/antgroup/ewallet/model/entity/Transaction.class
 com/antgroup/ewallet/model/entity/MerchantAddress.class
+com/antgroup/ewallet/model/request/PaymentRequest.class
 com/antgroup/ewallet/controller/GlobalExceptionHandler.class
 com/antgroup/ewallet/model/entity/Order.class
 com/antgroup/ewallet/model/request/PaymentCodeRequest.class

@@ -1,16 +1,26 @@
 package com.antgroup.ewallet.model.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class PaymentCodeInfo {
+    @JsonProperty("paymentCode")
     private String paymentCode;
+
+    @JsonProperty("codeValidityStartTime")
+    private String codeValidityStartTime;
+
+    @JsonProperty("codeExpiryTime")
+    private String codeExpiryTime;
+
+    // Default constructor required by Jackson
+    public PaymentCodeInfo() {
+    }
 
     public PaymentCodeInfo(String paymentCode, String codeValidityStartTime, String codeExpiryTime) {
         this.paymentCode = paymentCode;
         this.codeValidityStartTime = codeValidityStartTime;
         this.codeExpiryTime = codeExpiryTime;
     }
-
-    private String codeValidityStartTime;
-    private String codeExpiryTime;
 
     public String getPaymentCode() {
         return paymentCode;
@@ -35,6 +45,4 @@ public class PaymentCodeInfo {
     public void setCodeExpiryTime(String codeExpiryTime) {
         this.codeExpiryTime = codeExpiryTime;
     }
-
-    // Include getter and setter methods
 }

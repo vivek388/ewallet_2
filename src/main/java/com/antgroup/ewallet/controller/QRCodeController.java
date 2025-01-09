@@ -1,6 +1,7 @@
 package com.antgroup.ewallet.controller;
 
 import com.antgroup.ewallet.model.entity.PaymentCodeEnv;
+import com.antgroup.ewallet.model.entity.PaymentCodeInfo;
 import com.antgroup.ewallet.model.request.PaymentCodeRequest;
 import com.antgroup.ewallet.model.response.PaymentCodeResponse;
 import com.antgroup.ewallet.service.AliPayService;
@@ -35,6 +36,12 @@ public class QRCodeController {
     @Value("${alipay.clientId}")
     private String clientId;
 
+    @Value("${alipay.region:US}")  // Default to ID if not specified
+    private String region;
+
+    @Value("${alipay.merchant.id}")
+    private String merchantId;
+
     private final AliPayService aliPayService;
     private final ObjectMapper objectMapper;
 
@@ -48,31 +55,42 @@ public class QRCodeController {
         try {
             logger.info("Starting QR code generation process");
 
-            // Get user ID from cookie
             String userId = extractUserIdFromCookie(request);
             if (userId == null) {
                 logger.error("User ID not found in cookies");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body("User not authenticated");
             }
-            logger.debug("Generating QR code for user ID: {}", userId);
+            logger.debug("User ID extracted from cookie: {}", userId);
 
-            // Get current time in UTC
             String requestTime = LocalDateTime.now()
                     .atZone(ZoneId.systemDefault())
                     .withZoneSameInstant(ZoneId.of("UTC"))
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'"));
 
-            // Create payment code request
-            PaymentCodeRequest paymentCodeRequest = createPaymentCodeRequest(userId);
+            logger.debug("Generated request time: {}", requestTime);
 
-            // Generate signature
+            // Create payment code request with proper logging
+            PaymentCodeRequest paymentCodeRequest = new PaymentCodeRequest(
+                    region,
+                    userId,  // Original user ID from cookie
+                    "1",    // Default quantity
+                    new PaymentCodeEnv(merchantId)
+            );
+
+            // Log the complete request details
+            logger.info("Created PaymentCodeRequest with values:");
+            logger.info("Region: {}", paymentCodeRequest.getRegion());
+            logger.info("Customer ID: {}", paymentCodeRequest.getCustomerId());
+            logger.info("Code Quantity: {}", paymentCodeRequest.getCodeQuantity());
+            logger.info("Device Token ID: {}", paymentCodeRequest.getEnv().getDeviceTokenId());
+
             String requestJson = objectMapper.writeValueAsString(paymentCodeRequest);
+            logger.debug("Request JSON: {}", requestJson);
+
             String signature = aliPayService.getSignature(PAYMENT_CODE_URI, requestTime, requestJson);
+            logger.debug("Generated signature: {}", signature);
 
-            logger.debug("Generated signature for request");
-
-            // Call AliPay API
             PaymentCodeResponse response = aliPayService.getPaymentCode(
                     PAYMENT_CODE_URL,
                     paymentCodeRequest,
@@ -80,8 +98,11 @@ public class QRCodeController {
                     signature
             );
 
+            logger.info("Received response from AliPay API");
+            logger.debug("Response details: {}", objectMapper.writeValueAsString(response));
+
             if (response == null || response.getResult() == null) {
-                logger.error("Received null response from payment code API");
+                logger.error("Null response from payment code API");
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                         .body("Failed to generate QR code: No response from payment service");
             }
@@ -98,10 +119,41 @@ public class QRCodeController {
                         .body("Failed to generate QR code: No payment code generated");
             }
 
-            // Generate QR code
-            String htmlResponse = generateQrCodeHtml(response);
+            PaymentCodeInfo codeInfo = response.getPaymentCodeInfoList().get(0);
+            logger.info("Successfully extracted payment code info");
+            logger.debug("Payment code validity: {} to {}",
+                    codeInfo.getCodeValidityStartTime(),
+                    codeInfo.getCodeExpiryTime());
 
-            logger.info("Successfully generated QR code");
+            QRCodeWriter qrCodeWriter = new QRCodeWriter();
+            BitMatrix bitMatrix = qrCodeWriter.encode(
+                    codeInfo.getPaymentCode(),
+                    BarcodeFormat.QR_CODE,
+                    300,
+                    300
+            );
+
+            ByteArrayOutputStream pngOutputStream = new ByteArrayOutputStream();
+            MatrixToImageWriter.writeToStream(bitMatrix, "PNG", pngOutputStream);
+            String qrCodeImage = Base64.getEncoder().encodeToString(pngOutputStream.toByteArray());
+
+            logger.info("Successfully generated QR code image");
+
+            String htmlResponse = String.format(
+                    "<div class='qr-code-content'>" +
+                            "<h3>Your Payment QR Code</h3>" +
+                            "<img src='data:image/png;base64,%s' alt='Payment QR Code'/>" +
+                            "<p>Valid from: %s</p>" +
+                            "<p>Expires at: %s</p>" +
+                            "<button onclick=\"document.getElementById('qrCodeContainer').style.display='none'\" " +
+                            "class='close-button'>Close</button>" +
+                            "</div>",
+                    qrCodeImage,
+                    codeInfo.getCodeValidityStartTime(),
+                    codeInfo.getCodeExpiryTime()
+            );
+
+            logger.info("QR code generation process completed successfully");
             return ResponseEntity.ok()
                     .contentType(MediaType.TEXT_HTML)
                     .body(htmlResponse);
@@ -118,48 +170,12 @@ public class QRCodeController {
         if (cookies != null) {
             for (Cookie cookie : cookies) {
                 if ("ewalletID".equals(cookie.getName())) {
+                    logger.debug("Found ewalletID cookie with value: {}", cookie.getValue());
                     return cookie.getValue();
                 }
             }
         }
+        logger.warn("No ewalletID cookie found in request");
         return null;
-    }
-
-    private PaymentCodeRequest createPaymentCodeRequest(String userId) {
-        return new PaymentCodeRequest(
-                "PH",           // region
-                userId,         // customerId
-                "1",           // codeQuantity
-                new PaymentCodeEnv("device_" + userId)  // deviceTokenId
-        );
-    }
-
-    private String generateQrCodeHtml(PaymentCodeResponse response) throws Exception {
-        QRCodeWriter qrCodeWriter = new QRCodeWriter();
-        BitMatrix bitMatrix = qrCodeWriter.encode(
-                response.getPaymentCodeInfoList().get(0).getPaymentCode(),
-                BarcodeFormat.QR_CODE,
-                300,
-                300
-        );
-
-        ByteArrayOutputStream pngOutputStream = new ByteArrayOutputStream();
-        MatrixToImageWriter.writeToStream(bitMatrix, "PNG", pngOutputStream);
-        String qrCodeImage = Base64.getEncoder().encodeToString(pngOutputStream.toByteArray());
-
-        return String.format(
-                "<div style='text-align:center;'>" +
-                        "<img src='data:image/png;base64,%s' alt='Payment QR Code'/>" +
-                        "<p>Valid from: %s</p>" +
-                        "<p>Expires at: %s</p>" +
-                        "<button onclick='window.location.href=\"/wallet\"' " +
-                        "style='padding: 10px 20px; margin-top: 20px; background-color: #007bff; " +
-                        "color: white; border: none; border-radius: 5px; cursor: pointer;'>" +
-                        "Back to Wallet</button>" +
-                        "</div>",
-                qrCodeImage,
-                response.getPaymentCodeInfoList().get(0).getCodeValidityStartTime(),
-                response.getPaymentCodeInfoList().get(0).getCodeExpiryTime()
-        );
     }
 }

@@ -3,349 +3,208 @@ package com.antgroup.ewallet.controller;
 import com.antgroup.ewallet.model.entity.*;
 import com.antgroup.ewallet.model.request.*;
 import com.antgroup.ewallet.model.response.*;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import com.antgroup.ewallet.service.AliPayService;
 import com.antgroup.ewallet.service.ExcelService;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Arrays;
-
-import java.time.format.DateTimeFormatter;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.List;
 
 @RestController
 public class AliPayController {
+    private static final Logger logger = LoggerFactory.getLogger(UserController.class);
+
     @Value("${alipay.clientId}")
     private String clientId;
-    private static final Logger logger = LoggerFactory.getLogger(UserController.class);
-    private static String idCookieName = "ewalletID";
-    private static String userInitiatedPayApiUrl = "https://open-sea-global.alipayplus.com/aps/api/v1/payments/userInitiatedPay";
-    private static String userInitiatedPayApiUri = "/aps/api/v1/payments/userInitiatedPay";
-    private static String notifyPaymentUrl = "https://open-sea-global.alipayplus.com/aps/api/v1/payments/notifyPayment";
-    private static String notifyPaymentUri = "/aps/api/v1/payments/notifyPayment";
-    private static String orderIsClosed = "ORDER_IS_CLOSED";
-    private static String getPaymentCodeUrl = "https://open-sea.alipayplus.com/aps/api/v1/codes/getPaymentCode";
-    private static String getPaymentCodeUri = "/aps/api/v1/codes/getPaymentCode";
 
-    private AliPayService aliPayService;
-    private ExcelService excelService;
+    // Constants for API URLs and URIs
+    private static final String USER_INITIATED_PAY_URL = "https://open-sea-global.alipayplus.com/aps/api/v1/payments/userInitiatedPay";
+    private static final String USER_INITIATED_PAY_URI = "/aps/api/v1/payments/userInitiatedPay";
+    private static final String NOTIFY_PAYMENT_URL = "https://open-sea-global.alipayplus.com/aps/api/v1/payments/notifyPayment";
+    private static final String NOTIFY_PAYMENT_URI = "/aps/api/v1/payments/notifyPayment";
+    private static final String PAYMENT_CODE_URL = "https://open-sea.alipayplus.com/aps/api/v1/codes/getPaymentCode";
+    private static final String PAYMENT_CODE_URI = "/aps/api/v1/codes/getPaymentCode";
+    private static final String PAY_URL = "https://open-sea-global.alipayplus.com/aps/api/v1/payments/pay";
+    private static final String PAY_URI = "/aps/api/v1/payments/pay";
+    private static final String ORDER_IS_CLOSED = "ORDER_IS_CLOSED";
+    private static final String COOKIE_NAME = "ewalletID";
 
-    public AliPayController(AliPayService aliPayService, ExcelService excelService) {
+    private final AliPayService aliPayService;
+    private final ExcelService excelService;
+    private final ObjectMapper objectMapper;
+
+    public AliPayController(AliPayService aliPayService, ExcelService excelService, ObjectMapper objectMapper) {
         this.aliPayService = aliPayService;
         this.excelService = excelService;
+        this.objectMapper = objectMapper;
+        this.objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
     }
+
     @PostMapping("/initiatePay")
-    public UserInitiatedPayResponse initiatePay(@RequestBody QrCodeRequest qrCodeRequest, HttpServletRequest request)
-
-            throws JsonProcessingException {
+    public UserInitiatedPayResponse initiatePay(@RequestBody QrCodeRequest qrCodeRequest,
+                                                HttpServletRequest request) throws JsonProcessingException {
         logger.info("Received request to initiate payment. QR Code: {}", qrCodeRequest.getCode());
-        String id = null;
-        Cookie[] cookies = request.getCookies();
-        if (cookies != null) {
-            for (Cookie cookie : cookies) {
-                if (idCookieName.equals(cookie.getName())) {
-                    id = cookie.getValue();
-                    break;
-                }
-            }
-        }
-        logger.debug("Customer ID retrieved from cookie: {}", id);
-        LocalDateTime now = LocalDateTime.now();
-        String formattedDateTime = now.atZone(ZoneId.systemDefault())
-                .withZoneSameInstant(ZoneId.of("UTC"))
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'"));
 
+        String userId = extractUserIdFromCookie(request);
+        logger.debug("Customer ID retrieved from cookie: {}", userId);
+
+        String formattedDateTime = getCurrentFormattedDateTime();
         UserInitiatedPayRequest userInitiatedPayRequest = new UserInitiatedPayRequest();
-
         userInitiatedPayRequest.setCodeValue(qrCodeRequest.getCode());
-        userInitiatedPayRequest.setCustomerId(id);
+        userInitiatedPayRequest.setCustomerId(userId);
 
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
         String userInitiatedPayJson = objectMapper.writeValueAsString(userInitiatedPayRequest);
-        String signature = aliPayService.getSignature(userInitiatedPayApiUri, formattedDateTime, userInitiatedPayJson);
-        logger.debug("Generated UserInitiatedPayRequest JSON: {}", userInitiatedPayJson);
-        UserInitiatedPayResponse identifyCodeResp = aliPayService.UserInitiatedPay(userInitiatedPayApiUrl,
-                userInitiatedPayRequest, formattedDateTime, signature);
-        logger.debug("Generated API signature for UserInitiatedPay request: {}", signature);
+        String signature = aliPayService.getSignature(USER_INITIATED_PAY_URI, formattedDateTime, userInitiatedPayJson);
 
-        logger.info("Received UserInitiatedPay response: {}", identifyCodeResp);
-        return identifyCodeResp;
+        logger.debug("Generated API signature for UserInitiatedPay request: {}", signature);
+        UserInitiatedPayResponse response = aliPayService.UserInitiatedPay(USER_INITIATED_PAY_URL,
+                userInitiatedPayRequest, formattedDateTime, signature);
+
+        logger.info("Received UserInitiatedPay response: {}", response);
+        return response;
     }
 
     @PostMapping("/initiatedPay/pay")
     public WalletApiResult payInitiatedPay(@RequestBody UserInitiatedPayResponse initiatedPayResponse,
                                            HttpServletRequest request) throws JsonProcessingException {
         logger.info("Processing payment for response: {}", initiatedPayResponse);
-        String id = null;
-        Cookie[] cookies = request.getCookies();
-        if (cookies != null) {
-            for (Cookie cookie : cookies) {
-                if (idCookieName.equals(cookie.getName())) {
-                    id = cookie.getValue();
-                    break;
-                }
-            }
-        }
-        logger.debug("Customer ID retrieved from cookie: {}", id);
 
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        User user = excelService.getUserById(id);
-
-        LocalDateTime now = LocalDateTime.now();
-        String formattedDateTime = now.atZone(ZoneId.systemDefault())
-                .withZoneSameInstant(ZoneId.of("UTC"))
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'"));
+        String userId = extractUserIdFromCookie(request);
+        User user = excelService.getUserById(userId);
+        String formattedDateTime = getCurrentFormattedDateTime();
 
         double payToAmount = Double.parseDouble(initiatedPayResponse.payToAmount.value) / 100;
         double paymentId = -1;
         ApiResult apiResult = new ApiResult(new BaseResult("SUCCESS", "Success", "S"));
-        logger.info("Processing initiated payment for user: {} with amount: {}", id, payToAmount);
+
         if (user.getBalance() < payToAmount) {
-            logger.warn("User balance insufficient. User ID: {}, Balance: {}, Required: {}", id, user.getBalance(), payToAmount);
+            logger.warn("User balance insufficient. User ID: {}, Balance: {}, Required: {}",
+                    userId, user.getBalance(), payToAmount);
             apiResult = new ApiResult(new BaseResult("USER_BALANCE_NOT_ENOUGH", "Insufficient Balance", "F"));
         } else {
-            logger.debug("User balance is sufficient. Proceeding with transaction.");
             String promoJson = null;
             if (initiatedPayResponse.paymentPromoInfo != null) {
                 promoJson = objectMapper.writeValueAsString(initiatedPayResponse.paymentPromoInfo);
             }
 
-            paymentId = excelService.addTransaction(id, -payToAmount, initiatedPayResponse.order.orderDescription,
-                    apiResult.result.resultCode, apiResult.result.resultStatus, apiResult.result.resultMessage,
+            paymentId = excelService.addTransaction(userId, -payToAmount,
+                    initiatedPayResponse.order.orderDescription,
+                    apiResult.result.resultCode,
+                    apiResult.result.resultStatus,
+                    apiResult.result.resultMessage,
                     initiatedPayResponse.paymentRequestId,
-                    formattedDateTime, initiatedPayResponse.paymentAmount, initiatedPayResponse.payToAmount,
-                    initiatedPayResponse.paymentQuote, initiatedPayResponse.pspId, initiatedPayResponse.acquirerId,
-                    promoJson, null);
+                    formattedDateTime,
+                    initiatedPayResponse.paymentAmount,
+                    initiatedPayResponse.payToAmount,
+                    initiatedPayResponse.paymentQuote,
+                    initiatedPayResponse.pspId,
+                    initiatedPayResponse.acquirerId,
+                    promoJson,
+                    null
+            );
             logger.info("Transaction recorded. Payment ID: {}", paymentId);
         }
 
-        NotifyPaymentRequest notifyRequest = new NotifyPaymentRequest(apiResult.result,
-                initiatedPayResponse.paymentRequestId,
-                Double.toString(paymentId), formattedDateTime, initiatedPayResponse.paymentAmount,
-                initiatedPayResponse.payToAmount,
-                id);
-
+        NotifyPaymentRequest notifyRequest = createNotifyPaymentRequest(apiResult, initiatedPayResponse,
+                paymentId, formattedDateTime, userId);
         String notifyPaymentRequestJson = objectMapper.writeValueAsString(notifyRequest);
-        logger.debug("Generated NotifyPaymentRequest JSON: {}", notifyPaymentRequestJson);
-        String signature = aliPayService.getSignature(notifyPaymentUri, formattedDateTime, notifyPaymentRequestJson);
-        logger.debug("Generated API signature for NotifyPayment request: {}", signature);
+        String signature = aliPayService.getSignature(NOTIFY_PAYMENT_URI, formattedDateTime, notifyPaymentRequestJson);
 
-        ApiResult resp = aliPayService.NotifyPayment(notifyPaymentUrl,
-                notifyRequest, formattedDateTime, signature);
+        ApiResult response = aliPayService.NotifyPayment(NOTIFY_PAYMENT_URL, notifyRequest, formattedDateTime, signature);
         logger.info("Payment result - Status: {}, Message: {}", apiResult.result.resultCode, apiResult.result.resultMessage);
-        return new WalletApiResult(resp.result, paymentId);
+
+        return new WalletApiResult(response.result, paymentId);
     }
 
-    @PostMapping("/inquiry")
-    public ResponseEntity<InquiryPaymentResponse> inquiryPayment(@RequestBody InquiryPaymentRequest inquiryRequest,
-                                                                 @RequestHeader(value = "request-time", required = true) String requestTime,
-                                                                 @RequestHeader(value = "signature", required = true) String headerSignature,
-                                                                 HttpServletRequest request) throws JsonProcessingException {
-        logger.info("Received inquiryPayment request: {}, Headers: request-time={}, signature={}",
-                inquiryRequest, requestTime, headerSignature);
+    @PostMapping("/pay")
+    public ResponseEntity<PaymentResponse> processPay(@RequestBody PaymentRequest paymentRequest,
+                                                      @RequestHeader(value = "request-time", required = true) String requestTime,
+                                                      @RequestHeader(value = "signature", required = true) String headerSignature,
+                                                      HttpServletRequest request) throws JsonProcessingException {
+        logger.info("Received pay request for ID: {}", paymentRequest.getPaymentRequestId());
+        // Log the request details
+        logger.info("Received pay request: {}", objectMapper.writeValueAsString(paymentRequest));
+        logger.info("Request headers - request-time: {}, signature: {}", requestTime, headerSignature);
 
-        String respSignature = Arrays.stream(headerSignature.split(","))
-                .filter(part -> part.startsWith("signature="))
-                .map(part -> part.split("=")[1])
-                .findFirst()
-                .orElse(null);
-
-        logger.info("Extracted Signature: {}", respSignature);
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        String inquiryRequestJson = objectMapper.writeValueAsString(inquiryRequest);
-
-        boolean verified = aliPayService.verify("/inquiry", requestTime, inquiryRequestJson, respSignature);
-        logger.info("Signature verification result: {}", verified);
-
-        BaseResult baseResult = null;
-        InquiryPaymentResponse response = null;
+        String signature = extractSignature(headerSignature);
+        String requestJson = objectMapper.writeValueAsString(paymentRequest);
+        boolean verified = aliPayService.verify(PAY_URI, requestTime, requestJson, signature);
 
         if (!verified) {
-            logger.error("Invalid signature for inquiryPayment request.");
-            baseResult = new BaseResult("INVALID_SIGNATURE", "The signature is invalid.", "F");
-            response = new InquiryPaymentResponse(null, null, null, null, null, null, baseResult);
-        } else {
-            List<Transaction> transactions = excelService.getAlipayTransactions(inquiryRequest.paymentRequestId,
-                    inquiryRequest.pspId, inquiryRequest.acquirerId);
-            logger.info("Fetched transactions for paymentRequestId={}, pspId={}, acquirerId={}: {}",
-                    inquiryRequest.paymentRequestId, inquiryRequest.pspId, inquiryRequest.acquirerId, transactions);
-
-            if (transactions == null || transactions.size() <= 0) {
-                baseResult = new BaseResult("ORDER_NOT_EXIST", "The order doesn't exist.", "F");
-                response = new InquiryPaymentResponse(null, null, null, null, null, null, baseResult);
-            } else {
-                Transaction transaction = transactions.stream()
-                        .sorted((t1, t2) -> t1.getDateTime().compareTo(t2.getDateTime()))
-                        .findFirst().get();
-                logger.info("Selected transaction for inquiry response: {}", transaction);
-
-                baseResult = new BaseResult(transaction.getStatusCode(), transaction.getStatusMessage(),
-                        transaction.getStatus());
-                BasePayment payToAmount = new BasePayment(transaction.getPayToAmount(), transaction.getPayToCurrency());
-                BasePayment paymentAmount = new BasePayment(transaction.getPayAmount(), transaction.getPayCurrency());
-
-                response = new InquiryPaymentResponse(transaction.getCustomerId(),
-                        payToAmount, paymentAmount, Double.toString(transaction.getId()),
-                        baseResult, transaction.getPaymentTime(), new BaseResult(true));
-            }
+            logger.error("Invalid signature for pay request");
+            return ResponseEntity.badRequest().body(createErrorResponse("INVALID_SIGNATURE", "Invalid signature"));
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        String formattedDateTime = now.atZone(ZoneId.systemDefault())
-                .withZoneSameInstant(ZoneId.of("UTC"))
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'"));
-
-        String resultJson = objectMapper.writeValueAsString(response);
-        String signature = aliPayService.getSignature("/inquiry", formattedDateTime, resultJson);
-        logger.info("Generated response signature: {}", signature);
-
-        // Read headers for log
-        StringBuilder headersInfo = new StringBuilder();
-        request.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-            headersInfo.append(headerName).append(": ").append(request.getHeader(headerName)).append("\n");
-        });
-        logger.debug("Request headers: \n{}", headersInfo);
-
-        excelService.addApiCallLog("/inquiry",
-                "Body : " + inquiryRequestJson + "\nHeaders: \n" + headersInfo.toString(),
-                resultJson, verified);
-
-        logger.info("Sending inquiryPayment response: {}", response);
-        return ResponseEntity.ok()
-                .header("Signature", "algorithm=RSA256,keyVersion=1,signature=" + signature)
-                .header("Response-Time", formattedDateTime)
-                .header("Client-Id", clientId)
-                .body(response);
-    }
-
-    @PostMapping("/cancel")
-    public ResponseEntity<ApiResult> cancelPayment(@RequestBody CancelRequest cancelRequest,
-                                                   @RequestHeader(value = "request-time", required = true) String requestTime,
-                                                   @RequestHeader(value = "signature", required = true) String headerSignature,
-                                                   HttpServletRequest request) throws JsonProcessingException {
-        logger.info("Received cancelPayment request: {}, Headers: request-time={}, signature={}",
-                cancelRequest, requestTime, headerSignature);
-
-        String respSignature = Arrays.stream(headerSignature.split(","))
-                .filter(part -> part.startsWith("signature="))
-                .map(part -> part.split("=")[1])
-                .findFirst()
-                .orElse(null);
-
-        logger.info("Extracted Signature: {}", respSignature);
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        String cancelRequestJson = objectMapper.writeValueAsString(cancelRequest);
-
-        boolean verified = aliPayService.verify("/cancel", requestTime, cancelRequestJson, respSignature);
-        logger.info("Signature verification result: {}", verified);
-
-        ApiResult apiResult = null;
-
-        if (!verified) {
-            logger.error("Invalid signature for cancelPayment request.");
-            apiResult = new ApiResult(new BaseResult("INVALID_SIGNATURE", "The signature is invalid.", "F"));
-        } else {
-            List<Transaction> transactions = excelService.getAlipayTransactions(cancelRequest.paymentRequestId,
-                    cancelRequest.pspId, cancelRequest.acquirerId);
-
-            logger.info("Fetched transactions for paymentRequestId={}, pspId={}, acquirerId={}: {}",
-                    cancelRequest.paymentRequestId, cancelRequest.pspId, cancelRequest.acquirerId, transactions);
-
-            if (transactions == null || transactions.size() == 0) {
-                logger.warn("No transactions found for cancelPayment request.");
-                apiResult = new ApiResult(new BaseResult("ORDER_NOT_EXIST", "The order doesn't exist.", "F"));
-            } else {
-                Transaction transaction = transactions.stream()
-                        .sorted((t1, t2) -> t1.getDateTime().compareTo(t2.getDateTime()))
-                        .findFirst().get();
-                logger.info("Selected transaction for cancellation: {}", transaction);
-
-                if (!transaction.getStatusCode().equals(orderIsClosed)) {
-                    logger.info("Cancelling transaction for paymentRequestId={}", cancelRequest.paymentRequestId);
-                    excelService.cancelTransaction(cancelRequest.paymentRequestId);
-                }
-
-                apiResult = new ApiResult(new BaseResult(true));
-            }
+        if (!"CONNECT_WALLET".equals(paymentRequest.getPaymentMethod().getPaymentMethodType())) {
+            logger.error("Invalid payment method type: {}", paymentRequest.getPaymentMethod().getPaymentMethodType());
+            return ResponseEntity.badRequest().body(createErrorResponse("INVALID_PAYMENT_METHOD", "Invalid payment method"));
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        String formattedDateTime = now.atZone(ZoneId.systemDefault())
-                .withZoneSameInstant(ZoneId.of("UTC"))
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'"));
+        String customerId = paymentRequest.getPaymentMethod().getCustomerId();
+        double paymentAmount = Double.parseDouble(paymentRequest.getPayToAmount().getValue()) / 100;
 
-        String resultJson = objectMapper.writeValueAsString(apiResult);
-        String signature = aliPayService.getSignature("/cancel", formattedDateTime, resultJson);
-        logger.info("Generated response signature: {}", signature);
-
-        // Read headers for log
-        StringBuilder headersInfo = new StringBuilder();
-        request.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-            headersInfo.append(headerName).append(": ").append(request.getHeader(headerName)).append("\n");
-        });
-        logger.debug("Request headers: \n{}", headersInfo);
-
-        excelService.addApiCallLog("/cancel", "Body : " + cancelRequestJson + "\nHeaders: \n" + headersInfo.toString(),
-                resultJson, verified);
-
-        logger.info("Sending cancelPayment response: {}", apiResult);
-        return ResponseEntity.ok()
-                .header("Signature", "algorithm=RSA256,keyVersion=1,signature=" + signature)
-                .header("Response-Time", formattedDateTime)
-                .header("Client-Id", clientId)
-                .body(apiResult);
-    }
-    @PostMapping("/getPaymentCode")
-    public ResponseEntity<PaymentCodeResponse> getPaymentCodes(@RequestBody PaymentCodeRequest request,
-                                                               @RequestHeader(value = "request-time", required = true) String requestTime,
-                                                               @RequestHeader(value = "signature", required = true) String headerSignature,
-                                                               HttpServletRequest httpServletRequest) throws JsonProcessingException {
-        // Extract the signature from the header
-        String extractedSignature = Arrays.stream(headerSignature.split(","))
-                .filter(part -> part.startsWith("signature="))
-                .map(part -> part.split("=")[1])
-                .findFirst()
-                .orElse(null);
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        String requestJson = objectMapper.writeValueAsString(request);
-
-        // Verify the signature
-        boolean verified = aliPayService.verify(getPaymentCodeUri, requestTime, requestJson, extractedSignature);
-        if (!verified) {
-            BaseResult baseResult = new BaseResult("INVALID_SIGNATURE", "The signature is invalid.", "F");
-            PaymentCodeResponse response = new PaymentCodeResponse(baseResult, null);
-            return ResponseEntity.badRequest().body(response);
+        User user = excelService.getUserById(customerId);
+        if (user == null) {
+            logger.error("User not found: {}", customerId);
+            return ResponseEntity.badRequest().body(createErrorResponse("USER_NOT_FOUND", "User not found"));
         }
 
-        // Call the service to generate payment codes
-        PaymentCodeResponse response = aliPayService.getPaymentCode(getPaymentCodeUrl, request, requestTime, extractedSignature);
+        if (user.getBalance() < paymentAmount) {
+            logger.error("Insufficient balance for user: {}", customerId);
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("INSUFFICIENT_BALANCE", "Insufficient balance"));
+        }
 
-        // Generate response headers
-        LocalDateTime now = LocalDateTime.now();
-        String formattedDateTime = now.atZone(ZoneId.systemDefault())
-                .withZoneSameInstant(ZoneId.of("UTC"))
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'"));
+        String formattedDateTime = getCurrentFormattedDateTime();
 
-        String resultJson = objectMapper.writeValueAsString(response);
-        String responseSignature = aliPayService.getSignature(getPaymentCodeUri, formattedDateTime, resultJson);
+        double transactionId = excelService.addTransaction(
+                customerId,
+                -paymentAmount,
+                paymentRequest.getOrder().getOrderDescription(),
+                "SUCCESS",
+                "S",
+                "Success",
+                paymentRequest.getPaymentRequestId(),
+                formattedDateTime,
+                paymentRequest.getPaymentAmount(),
+                paymentRequest.getPayToAmount(),
+                paymentRequest.getPaymentQuote(),
+                paymentRequest.getPspId(),
+                paymentRequest.getAcquirerId(),
+                null,
+                null
+        );
+
+        PaymentResponse response = new PaymentResponse(
+                new BaseResult("SUCCESS", "S", "success"),
+                String.valueOf(transactionId),
+                formattedDateTime,
+                customerId
+        );
+
+        String responseJson = objectMapper.writeValueAsString(response);
+        String responseSignature = aliPayService.getSignature(PAY_URI, formattedDateTime, responseJson);
+
+        // Log API call
+        logApiCall(request, requestJson, responseJson, verified);
+        // Log the response details
+        logger.info("Returning pay response: {}", objectMapper.writeValueAsString(response));
+        logger.info("Response headers - Signature: {}, Response-Time: {}, Client-Id: {}",
+                "algorithm=RSA256,keyVersion=1,signature=" + responseSignature,
+                formattedDateTime,
+                clientId);
 
         return ResponseEntity.ok()
                 .header("Signature", "algorithm=RSA256,keyVersion=1,signature=" + responseSignature)
@@ -354,14 +213,243 @@ public class AliPayController {
                 .body(response);
     }
 
-//        @PostMapping("/getPaymentCode")
-//        public ResponseEntity<PaymentCodeResponse> getPaymentCode(@RequestBody PaymentCodeRequest request) {
-//            // Mock or real implementation
-//            PaymentCodeEnv env = request.getEnv();
-//            PaymentCodeInfo paymentCodeInfo = new PaymentCodeInfo("testPaymentCode123", "2024-12-31T00:00:00", "2025-01-01T00:00:00");
-//            BaseResult baseResult = new BaseResult("S", "Success", "T");
-//
-//            return ResponseEntity.ok(new PaymentCodeResponse(baseResult, List.of(paymentCodeInfo)));
-//        }
+    @PostMapping("/getPaymentCode")
+    public ResponseEntity<PaymentCodeResponse> getPaymentCodes(
+            @RequestBody PaymentCodeRequest request,
+            @RequestHeader(value = "request-time", required = true) String requestTime,
+            @RequestHeader(value = "signature", required = true) String headerSignature,
+            HttpServletRequest httpServletRequest) throws JsonProcessingException {
 
+        // Log the request details
+        logger.info("Received payment code request: {}", objectMapper.writeValueAsString(request));
+        logger.info("Request headers - request-time: {}, signature: {}", requestTime, headerSignature);
+
+        String extractedSignature = extractSignature(headerSignature);
+        String requestJson = objectMapper.writeValueAsString(request);
+        boolean verified = aliPayService.verify(PAYMENT_CODE_URI, requestTime, requestJson, extractedSignature);
+
+        if (!verified) {
+            logger.error("Invalid signature for payment code request");
+            BaseResult baseResult = new BaseResult("INVALID_SIGNATURE", "The signature is invalid.", "F");
+            return ResponseEntity.badRequest().body(new PaymentCodeResponse(baseResult, null));
+        }
+
+        PaymentCodeResponse response = aliPayService.getPaymentCode(PAYMENT_CODE_URL, request, requestTime, extractedSignature);
+        String formattedDateTime = getCurrentFormattedDateTime();
+        String resultJson = objectMapper.writeValueAsString(response);
+        String responseSignature = aliPayService.getSignature(PAYMENT_CODE_URI, formattedDateTime, resultJson);
+
+        // Log the response details
+        logger.info("Returning payment code response: {}", objectMapper.writeValueAsString(response));
+        logger.info("Response headers - Signature: {}, Response-Time: {}, Client-Id: {}",
+                "algorithm=RSA256,keyVersion=1,signature=" + responseSignature,
+                formattedDateTime,
+                clientId);
+
+        return ResponseEntity.ok()
+                .header("Signature", "algorithm=RSA256,keyVersion=1,signature=" + responseSignature)
+                .header("Response-Time", formattedDateTime)
+                .header("Client-Id", clientId)
+                .body(response);
+    }
+
+    @PostMapping("/inquiry")
+    public ResponseEntity<InquiryPaymentResponse> inquiryPayment(
+            @RequestBody InquiryPaymentRequest inquiryRequest,
+            @RequestHeader(value = "request-time", required = true) String requestTime,
+            @RequestHeader(value = "signature", required = true) String headerSignature,
+            HttpServletRequest request) throws JsonProcessingException {
+
+        logger.info("Received inquiry request for payment request ID: {}", inquiryRequest.getPaymentRequestId());
+
+        String signature = extractSignature(headerSignature);
+        String requestJson = objectMapper.writeValueAsString(inquiryRequest);
+        boolean verified = aliPayService.verify("/inquiry", requestTime, requestJson, signature);
+
+        if (!verified) {
+            logger.error("Invalid signature for inquiry request");
+            return ResponseEntity.badRequest().body(new InquiryPaymentResponse(
+                    null, null, null, null, null, null,
+                    new BaseResult("INVALID_SIGNATURE", "The signature is invalid.", "F")
+            ));
+        }
+
+        List<Transaction> transactions = excelService.getAlipayTransactions(
+                inquiryRequest.paymentRequestId,
+                inquiryRequest.pspId,
+                inquiryRequest.acquirerId
+        );
+
+        InquiryPaymentResponse response;
+        if (transactions == null || transactions.isEmpty()) {
+            response = new InquiryPaymentResponse(null, null, null, null, null, null,
+                    new BaseResult("ORDER_NOT_EXIST", "The order doesn't exist.", "F"));
+        } else {
+            Transaction transaction = transactions.stream()
+                    .min((t1, t2) -> t1.getDateTime().compareTo(t2.getDateTime()))
+                    .orElseThrow();
+
+            response = createInquiryResponse(transaction);
+        }
+
+        String formattedDateTime = getCurrentFormattedDateTime();
+        String responseJson = objectMapper.writeValueAsString(response);
+        String responseSignature = aliPayService.getSignature("/inquiry", formattedDateTime, responseJson);
+
+        // Log API call
+        logApiCall(request, requestJson, responseJson, verified);
+
+        return ResponseEntity.ok()
+                .header("Signature", "algorithm=RSA256,keyVersion=1,signature=" + responseSignature)
+                .header("Response-Time", formattedDateTime)
+                .header("Client-Id", clientId)
+                .body(response);
+    }
+
+    @PostMapping("/cancel")
+    public ResponseEntity<ApiResult> cancelPayment(
+            @RequestBody CancelRequest cancelRequest,
+            @RequestHeader(value = "request-time", required = true) String requestTime,
+            @RequestHeader(value = "signature", required = true) String headerSignature,
+            HttpServletRequest request) throws JsonProcessingException {
+
+        logger.info("Received cancel request for payment request ID: {}", cancelRequest.getPaymentRequestId());
+
+        String signature = extractSignature(headerSignature);
+        String requestJson = objectMapper.writeValueAsString(cancelRequest);
+        boolean verified = aliPayService.verify("/cancel", requestTime, requestJson, signature);
+
+        if (!verified) {
+            logger.error("Invalid signature for cancel request");
+            return ResponseEntity.badRequest()
+                    .body(new ApiResult(new BaseResult("INVALID_SIGNATURE", "The signature is invalid.", "F")));
+        }
+
+        List<Transaction> transactions = excelService.getAlipayTransactions(
+                cancelRequest.paymentRequestId,
+                cancelRequest.pspId,
+                cancelRequest.acquirerId
+        );
+
+        ApiResult apiResult;
+        if (transactions == null || transactions.isEmpty()) {
+            apiResult = new ApiResult(new BaseResult("ORDER_NOT_EXIST", "The order doesn't exist.", "F"));
+        } else {
+            Transaction transaction = transactions.stream()
+                    .min((t1, t2) -> t1.getDateTime().compareTo(t2.getDateTime()))
+                    .orElseThrow();
+
+            if (!transaction.getStatusCode().equals(ORDER_IS_CLOSED)) {
+                logger.info("Cancelling transaction for paymentRequestId={}", cancelRequest.paymentRequestId);
+                excelService.cancelTransaction(cancelRequest.paymentRequestId);
+            }
+
+            apiResult = new ApiResult(new BaseResult(true));
+        }
+
+        String formattedDateTime = getCurrentFormattedDateTime();
+        String responseJson = objectMapper.writeValueAsString(apiResult);
+        String responseSignature = aliPayService.getSignature("/cancel", formattedDateTime, responseJson);
+
+        // Log API call
+        logApiCall(request, requestJson, responseJson, verified);
+
+        return ResponseEntity.ok()
+                .header("Signature", "algorithm=RSA256,keyVersion=1,signature=" + responseSignature)
+                .header("Response-Time", formattedDateTime)
+                .header("Client-Id", clientId)
+                .body(apiResult);
+    }
+
+    // Helper methods
+    private String extractUserIdFromCookie(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if (COOKIE_NAME.equals(cookie.getName())) {
+                    return cookie.getValue();
+                }
+            }
+        }
+        return null;
+    }
+
+    private String extractSignature(String headerSignature) {
+        return Arrays.stream(headerSignature.split(","))
+                .filter(part -> part.startsWith("signature="))
+                .map(part -> part.split("=")[1])
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void logApiCall(HttpServletRequest request, String requestJson, String responseJson, boolean verified) {
+        StringBuilder headersInfo = new StringBuilder();
+        request.getHeaderNames().asIterator().forEachRemaining(headerName -> {
+            headersInfo.append(headerName).append(": ").append(request.getHeader(headerName)).append("\n");
+        });
+
+        excelService.addApiCallLog(
+                request.getRequestURI(),
+                "Body: " + requestJson + "\nHeaders: \n" + headersInfo.toString(),
+                responseJson,
+                verified
+        );
+    }
+
+    private String getCurrentFormattedDateTime() {
+        return LocalDateTime.now()
+                .atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneId.of("UTC"))
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'"));
+    }
+
+    private PaymentResponse createErrorResponse(String code, String message) {
+        return new PaymentResponse(
+                new BaseResult(code, "F", message),
+                null,
+                null,
+                null
+        );
+    }
+
+    private NotifyPaymentRequest createNotifyPaymentRequest(ApiResult apiResult,
+                                                            UserInitiatedPayResponse initiatedPayResponse, double paymentId, String formattedDateTime, String userId) {
+        return new NotifyPaymentRequest(
+                apiResult.result,
+                initiatedPayResponse.paymentRequestId,
+                Double.toString(paymentId),
+                formattedDateTime,
+                initiatedPayResponse.paymentAmount,
+                initiatedPayResponse.payToAmount,
+                userId
+        );
+    }
+
+    private InquiryPaymentResponse createInquiryResponse(Transaction transaction) {
+        BaseResult baseResult = new BaseResult(
+                transaction.getStatusCode(),
+                transaction.getStatusMessage(),
+                transaction.getStatus()
+        );
+
+        BasePayment payToAmount = new BasePayment(
+                transaction.getPayToAmount(),
+                transaction.getPayToCurrency()
+        );
+
+        BasePayment paymentAmount = new BasePayment(
+                transaction.getPayAmount(),
+                transaction.getPayCurrency()
+        );
+
+        return new InquiryPaymentResponse(
+                transaction.getCustomerId(),
+                payToAmount,
+                paymentAmount,
+                Double.toString(transaction.getId()),
+                baseResult,
+                transaction.getPaymentTime(),
+                new BaseResult(true)
+        );
+    }
 }

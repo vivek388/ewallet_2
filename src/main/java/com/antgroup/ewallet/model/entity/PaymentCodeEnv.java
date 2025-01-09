@@ -6,6 +6,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class PaymentCodeEnv {
     private String deviceTokenId;
 
+    // Default constructor
+    public PaymentCodeEnv() {
+    }
+
     @JsonCreator
     public PaymentCodeEnv(@JsonProperty("deviceTokenId") String deviceTokenId) {
         this.deviceTokenId = deviceTokenId;

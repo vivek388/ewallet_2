@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:th="http://www.w3.org/1999/xhtml">
 
 <head>
     <meta charset="UTF-8">
@@ -10,6 +10,7 @@
 </head>
 
 <body>
+    <div class="qr-overlay"></div>
     <div id="modalBackdrop" class="modal-backdrop" style="display:none;"></div>
     <div class="wallet-container">
         <header class="wallet-header">
@@ -32,7 +33,7 @@
                 </li>
             </ul>
         </div>
-        <div id="qrCodeContainer" style="margin: 20px; min-height: 400px;"></div>
+        <div id="qrCodeContainer" class="qr-code-container"></div>
         <div class="wallet-actions">
             <button class="action-button" id="reloadButton">Reload</button>
             <button class="action-button" onclick="startQrScanner()">Scan QR</button>
@@ -64,7 +65,12 @@
             <button class="modal-button" onclick="stopQrScanner()">Stop Scanning</button>
         </div>
     </div>
-
+    <div id="paymentConfirmationModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closePaymentModal()">&times;</span>
+            <div id="paymentConfirmationContent"></div>
+        </div>
+    </div>
     <!-- Confirmation Modal -->
     <div id="confirmationModal"
         style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:white; border-radius:8px; box-shadow:0 4px 8px rgba(0,0,0,0.2); width:400px; z-index:1000; padding:20px;">
@@ -150,57 +156,119 @@
 
     <script>
         let html5QrCode;
-            function getCookieValue(cookieName) {
-                const cookies = document.cookie.split(';');
-                for (let cookie of cookies) {
-                    const [name, value] = cookie.trim().split('=');
-                    if (name === cookieName) {
-                        return value;
-                    }
+        function getCookieValue(cookieName) {
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === cookieName) {
+                    return value;
                 }
-                return null;
             }
+            return null;
+       }
 
-<!--        function generateQRCode() {-->
-<!--            const request = {-->
-<!--                region: "PH",-->
-<!--                customerId: "21281****",-->
-<!--                codeQuantity: "3",-->
-<!--                env: {-->
-<!--                    deviceTokenId: "21212****"-->
-<!--                }-->
-<!--            };-->
+        // In walletPage.html, update the payment handling:
+        function showPaymentConfirmation(paymentDetails) {
+            const modal = document.getElementById('paymentConfirmationModal');
+            const content = document.getElementById('paymentConfirmationContent');
 
-<!--            fetch('/getPaymentCode', {-->
-<!--                method: 'POST',-->
-<!--                headers: {-->
-<!--                    'Content-Type': 'application/json',-->
-<!--                    'request-time': new Date().toISOString()-->
-<!--                },-->
-<!--                body: JSON.stringify(request)-->
-<!--            })-->
-<!--            .then(response => response.json())-->
-<!--            .then(data => {-->
-<!--                if (data.result.resultStatus === 'S') {-->
-<!--                    window.location.href = "/showQr";-->
-<!--                } else {-->
-<!--                    alert('Failed to generate QR code');-->
-<!--                }-->
-<!--            })-->
-<!--            .catch(error => {-->
-<!--                console.error('Error:', error);-->
-<!--                alert('Error generating QR code');-->
-<!--            });-->
-<!--        }-->
+            const confirmationHtml = `
+                <div class="confirmation-details">
+                    <h3>Payment Request</h3>
+                    <ul>
+                        <li>
+                            <span>Merchant:</span>
+                            <span>${paymentDetails.order.merchant.merchantName}</span>
+                        </li>
+                        <li>
+                            <span>Amount:</span>
+                            <span>${paymentDetails.payToAmount.currency} ${(paymentDetails.payToAmount.value / 100).toFixed(2)}</span>
+                        </li>
+                        <li>
+                            <span>Description:</span>
+                            <span>${paymentDetails.order.orderDescription}</span>
+                        </li>
+                    </ul>
+                    <div class="wc-wallet-actions">
+                        <button class="wc-action-button" onclick='processPayment(${JSON.stringify(paymentDetails)})'>
+                            Confirm
+                        </button>
+                        <button class="wc-action-button cancel" onclick="closePaymentModal()">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            content.innerHTML = confirmationHtml;
+            modal.style.display = 'block';
+        }
+
+        function processPayment(paymentDetails) {
+            // Show loading state
+            const content = document.getElementById('paymentConfirmationContent');
+            content.innerHTML = '<div class="loading-state"><p>Processing Payment...</p><div class="spinner"></div></div>';
+
+            fetch('/initiatedPay/pay', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(paymentDetails)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Payment failed');
+                }
+                return response.json();
+            })
+            .then(result => {
+                if (result.result.resultStatus === 'S') {
+                    // Show success message then redirect
+                    content.innerHTML = `
+                        <div class="success-state">
+                            <h3>Payment Successful!</h3>
+                            <p>Redirecting to confirmation page...</p>
+                        </div>
+                    `;
+                    setTimeout(() => {
+                        window.location.href = `/payment-confirmation?id=${result.id}`;
+                    }, 2000);
+                } else {
+                    throw new Error(result.result.resultMessage || 'Payment failed');
+                }
+            })
+            .catch(error => {
+                content.innerHTML = `
+                    <div class="error-state">
+                        <h3>Payment Failed</h3>
+                        <p>${error.message}</p>
+                        <button class="wc-action-button" onclick="closePaymentModal()">Close</button>
+                    </div>
+                `;
+            });
+        }
+
+        function closePaymentModal() {
+            const modal = document.getElementById('paymentConfirmationModal');
+            modal.style.display = 'none';
+        }
 
         function generateQRCode() {
             const qrContainer = document.getElementById('qrCodeContainer');
+            const overlay = document.querySelector('.qr-overlay');
+
             if (!qrContainer) {
                 console.error('QR code container not found');
                 return;
             }
 
-            qrContainer.innerHTML = '<div style="text-align:center;"><p>Generating QR Code...</p></div>';
+            // Show overlay and container
+            overlay.style.display = 'block';
+            qrContainer.style.display = 'block';
+
+            // Show loading state
+            qrContainer.innerHTML = '<div class="loading-state"><p>Generating QR Code...</p><div class="spinner"></div></div>';
 
             fetch('/wallet/generateQrCode', {
                 method: 'POST',
@@ -221,14 +289,21 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                qrContainer.innerHTML = `<div style="text-align:center; color:red;">
-                    <p>Error generating QR code: ${error.message}</p>
-                    <button onclick="window.location.reload()"
-                            style="padding: 10px 20px; margin-top: 10px; cursor: pointer;">
-                        Try Again
-                    </button>
-                </div>`;
+                qrContainer.innerHTML = `
+                    <div class="error-state">
+                        <p>Error generating QR code: ${error.message}</p>
+                        <button onclick="generateQRCode()" class="retry-button">Try Again</button>
+                        <button onclick="closeQRCode()" class="close-button">Close</button>
+                    </div>`;
             });
+        }
+
+        function closeQRCode() {
+            const qrContainer = document.getElementById('qrCodeContainer');
+            const overlay = document.querySelector('.qr-overlay');
+
+            if (qrContainer) qrContainer.style.display = 'none';
+            if (overlay) overlay.style.display = 'none';
         }
         function startQrScanner() {
             // Check for camera permissions

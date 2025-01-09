@@ -189,4 +189,5 @@ public class AliPayService {
             throw new RuntimeException("Failed to call Get Payment Code API: " + e.getMessage(), e);
         }
     }
+
 }

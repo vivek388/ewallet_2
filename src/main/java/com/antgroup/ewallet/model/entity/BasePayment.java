@@ -3,7 +3,7 @@ package com.antgroup.ewallet.model.entity;
 public class BasePayment {
     public String value;
     public String currency;
-    
+
     public String getValue() {
         return value;
     }
@@ -23,5 +23,5 @@ public class BasePayment {
     public BasePayment() {
     }
 
-    
+
 }

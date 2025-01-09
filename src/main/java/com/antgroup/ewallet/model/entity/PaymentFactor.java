@@ -22,5 +22,5 @@ public class PaymentFactor{
     public void setInStorePaymentScenario(String inStorePaymentScenario) {
         this.inStorePaymentScenario = inStorePaymentScenario;
     }
-    
+
 }
