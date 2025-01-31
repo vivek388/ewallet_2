@@ -28,6 +28,7 @@ import java.util.Base64;
 
 @RestController
 @RequestMapping("/wallet")
+@CrossOrigin(origins = "http://*.replit.dev")
 public class QRCodeController {
     private static final Logger logger = LoggerFactory.getLogger(QRCodeController.class);
     private static final String PAYMENT_CODE_URI = "/aps/api/v1/codes/getPaymentCode";

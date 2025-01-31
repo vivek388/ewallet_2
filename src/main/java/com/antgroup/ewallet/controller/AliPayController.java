@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @RestController
+@CrossOrigin(origins = "http://*.replit.dev")
 public class AliPayController {
     private static final Logger logger = LoggerFactory.getLogger(UserController.class);
 

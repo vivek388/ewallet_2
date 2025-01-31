@@ -16,6 +16,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.util.List;
 
 @RestController
+@CrossOrigin(origins = "http://*.replit.dev")
 public class UserController {
     private static final String ID_COOKIE_NAME = "ewalletID";
     private static final Logger logger = LoggerFactory.getLogger(UserController.class);

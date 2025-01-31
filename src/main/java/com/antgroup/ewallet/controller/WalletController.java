@@ -27,6 +27,7 @@ import javax.servlet.http.HttpServletResponse;
 import sdk.code.model.result.CodeIdentificationResult;
 
 @RestController
+@CrossOrigin(origins = "http://*.replit.dev")
 public class WalletController {
 
     private static final Logger logger = LoggerFactory.getLogger(WalletController.class);
